@@ -195,7 +195,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **sars-23**
 
 - GitHub: [@sars-23](https://github.com/sars-23)
-
----
-
-**Made with ❤️ for language enthusiasts**
