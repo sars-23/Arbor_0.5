@@ -1,197 +1,280 @@
-# Arbor 0.5
+# Arbor (v0.5)
 
-A **dynamically interpreted programming language** built with Java, designed to provide an elegant and efficient runtime for executing code with dynamic typing and interpretation.
+A dynamically typed, interpreted programming language engineered in Java. Arbor features a handwritten lexical scanner, a recursive-descent parser, an Abstract Syntax Tree (AST) evaluated via the Visitor pattern, a hierarchical runtime environment with first-class lexical closures, a command-line script runner, and a built-in Swing mini-IDE.
 
-## 📋 Table of Contents
+---
 
-- [Features](#features)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
-- [Roadmap](#roadmap)
+## Architecture Overview
 
-## ✨ Features
+Arbor translates `.ar` source text into runtime values through a classic tree-walk interpreter architecture:
 
-- **Dynamic Typing**: Variables are dynamically typed at runtime
-- **Interpreted Execution**: Code is interpreted directly without compilation to bytecode
-- **Java-based**: Built on Java for reliability and cross-platform compatibility
-- **Lightweight**: Minimal dependencies and efficient memory footprint
-- **Extensible**: Easy to extend with custom functions and libraries
+```mermaid
+graph TD
+    Source["Source Code (.ar)"] -->|Character Stream| Lexer["Lexer (Scanner)"]
+    Lexer -->|Token Stream| Parser["Recursive-Descent Parser"]
+    Parser -->|AST Node Graph| AST["Abstract Syntax Tree (Expr & Stmt)"]
+    AST -->|Visitor Pattern| Interpreter["Interpreter (Tree-Walker)"]
+    
+    subgraph RuntimeEnvironment["Runtime Environment"]
+        Env["Global Scope (Environment)"]
+        LocalEnv["Local / Block Scope"]
+        Callables["ArborFunction (First-Class Closures)"]
+        Env --- LocalEnv
+        LocalEnv --- Callables
+    end
+    
+    Interpreter <--> RuntimeEnvironment
+    Interpreter -->|Evaluated Result| Output["Console / ArborIDE GUI"]
+```
 
-## 🚀 Getting Started
+### Component Responsibilities
+
+| Component | Package | Responsibility |
+|---|---|---|
+| **Lexer** | `com.arbor.lexer` | Scans raw source characters into typed `Token` records with line metadata (`TokenType`). Handles strings, numbers, identifiers, operators, and comments. |
+| **Parser** | `com.arbor.parser` | Implements recursive-descent parsing matching Arbor grammar rules. Produces a strongly typed AST (`List<Stmt>`) and performs panic-mode error synchronization. |
+| **AST** | `com.arbor.ast` | Hierarchical node classes partitioned into expressions (`com.arbor.ast.expression`) and statements (`com.arbor.ast.statement`), decoupled from evaluation logic via Visitor interfaces (`Expr.Visitor<R>`, `Stmt.Visitor<R>`). |
+| **Interpreter** | `com.arbor.runtime` | Evaluates AST nodes by traversing the tree recursively, enforcing runtime type safety, dynamic evaluation, and control flow. |
+| **Environment** | `com.arbor.runtime` | Manages variable bindings and lexical scoping through a parent-linked scope chain (`enclosing`), enabling nested blocks and first-class closures. |
+| **Callables** | `com.arbor.runtime` | Implements `ArborCallable` and `ArborFunction`, binding declared functions to the lexical environment where they were created. |
+| **CLI & GUI** | `com.arbor.cli`, `com.arbor.gui` | Provides dual entry points: a CLI script runner (`Arbor.java`) and a Swing-based interactive IDE (`ArborIDE.java`) with syntax output redirection. |
+
+---
+
+## Language Grammar (EBNF)
+
+Arbor's syntax and operator precedence are formally specified as follows:
+
+```ebnf
+program        ::= declaration* EOF ;
+
+declaration    ::= funDeclaration
+                 | varDeclaration
+                 | statement ;
+
+funDeclaration ::= "fun" IDENTIFIER "(" parameters? ")" "{" statement* "}" ;
+parameters     ::= IDENTIFIER ( "," IDENTIFIER )* ;
+
+varDeclaration ::= "let" IDENTIFIER ( "=" expression )? ";" ;
+
+statement      ::= exprStatement
+                 | ifStatement
+                 | printStatement
+                 | returnStatement
+                 | whileStatement
+                 | block ;
+
+exprStatement  ::= expression ";" ;
+ifStatement    ::= "if" "(" expression ")" statement ( "else" statement )? ;
+printStatement ::= "print" "(" expression ")" ";" ;
+returnStatement::= "return" expression? ";" ;
+whileStatement ::= "while" "(" expression ")" statement ;
+block          ::= "{" declaration* "}" ;
+
+expression     ::= assignment ;
+assignment     ::= IDENTIFIER "=" assignment
+                 | equality ;
+equality       ::= comparison ( ( "!=" | "==" ) comparison )* ;
+comparison     ::= term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term           ::= factor ( ( "-" | "+" ) factor )* ;
+factor         ::= unary ( ( "/" | "*" | "%" ) unary )* ;
+unary          ::= ( "!" | "-" ) unary
+                 | call ;
+call           ::= primary ( "(" arguments? ")" )* ;
+arguments      ::= expression ( "," expression )* ;
+primary        ::= NUMBER | STRING | "true" | "false" | "null"
+                 | "(" expression ")"
+                 | IDENTIFIER ;
+```
+
+---
+
+## Language Features & Examples
+
+### 1. Variables and Types (`let`)
+Variables are dynamically typed and declared using the `let` keyword. Statements are terminated by semicolons:
+
+```javascript
+let greeting = "Hello, Arbor!";
+let count = 42;
+let isValid = true;
+
+print(greeting);
+```
+
+### 2. Control Flow (`if` / `else`, `while`)
+Arbor supports standard conditional branching and looping:
+
+```javascript
+let i = 0;
+while (i < 5) {
+    if (i % 2 == 0) {
+        print("Even number: " + i);
+    } else {
+        print("Odd number: " + i);
+    }
+    i = i + 1;
+}
+```
+
+### 3. Functions & Recursion (`fact.ar`, `fib.ar`)
+Functions are declared with `fun` and return values using `return`:
+
+```javascript
+// Factorial (fact.ar)
+fun fact(n) {
+    if (n <= 1) return 1;
+    return n * fact(n - 1);
+}
+
+print(fact(5)); // Output: 120
+```
+
+```javascript
+// Fibonacci (fib.ar)
+fun fib(n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+print(fib(10)); // Output: 55
+```
+
+### 4. First-Class Functions and Closures (`closure.ar`)
+Functions are first-class values and capture variables in their enclosing lexical environment:
+
+```javascript
+fun makeCounter() {
+    let count = 0;
+
+    fun increment() {
+        count = count + 1;
+        return count;
+    }
+
+    return increment;
+}
+
+let counter1 = makeCounter();
+let counter2 = makeCounter();
+
+print("Counter 1:");
+print(counter1()); // 1
+print(counter1()); // 2
+print(counter1()); // 3
+
+print("Counter 2:");
+print(counter2()); // 1
+```
+
+---
+
+## Project Structure
+
+```text
+com.arbor
+├── ast
+│   ├── Expr.java                     # Expression AST base class & Visitor interface
+│   ├── Stmt.java                     # Statement AST base class & Visitor interface
+│   ├── expression
+│   │   ├── AssignExpr.java           # Variable reassignment node
+│   │   ├── BinaryExpr.java           # Arithmetic & logical binary operator node
+│   │   ├── CallExpr.java             # Function invocation node
+│   │   ├── GroupingExpr.java         # Parenthesized expression node
+│   │   ├── LiteralExpr.java          # Numbers, strings, booleans, null literals
+│   │   ├── UnaryExpr.java            # Unary negation & logical not node
+│   │   └── VariableExpr.java         # Variable reference node
+│   └── statement
+│       ├── BlockStmt.java            # Scoped block statement node ({ ... })
+│       ├── ExpressionStmt.java       # Expression wrapper statement
+│       ├── FunctionStmt.java         # Function declaration node
+│       ├── IfStmt.java               # Conditional branch statement
+│       ├── PrintStmt.java            # Print statement node
+│       ├── ReturnStmt.java           # Return statement node
+│       ├── VarStmt.java              # Variable declaration statement node (let)
+│       └── WhileStmt.java            # While loop statement node
+├── cli
+│   └── Arbor.java                    # Main CLI entrypoint (file execution & launcher)
+├── error
+│   ├── ArborError.java               # Top-level language error base class
+│   ├── LexicalError.java             # Unexpected character errors
+│   ├── ParseError.java               # Grammar & syntax validation errors
+│   └── RuntimeError.java             # Dynamic type & evaluation exceptions
+├── gui
+│   ├── ArborIDE.java                 # Swing-based desktop editor & runner
+│   └── CustomOutputStream.java       # JTextArea stream redirection utility
+├── lexer
+│   ├── Lexer.java                    # Character scanning & tokenization engine
+│   ├── Token.java                    # Immutable token value object with line tracking
+│   └── TokenType.java                # Keyword, symbol, and literal token enumeration
+├── parser
+│   └── Parser.java                   # Recursive-descent parser & panic synchronizer
+└── runtime
+    ├── ArborCallable.java            # Callable interface for functions
+    ├── ArborFunction.java            # User-defined function & closure representation
+    ├── Environment.java              # Lexical scope & symbol binding store
+    ├── Interpreter.java              # AST visitor implementation & tree-walker
+    └── Return.java                   # Unwind control exception for return statements
+```
+
+---
+
+## Getting Started
 
 ### Prerequisites
+- **JDK 17+** (or Java 21)
+- **Maven 3.8+**
 
-- **Java 11+** or higher
-- **Maven** 3.6+ (for building from source)
-
-### Installation
-
-#### Option 1: Clone and Build from Source
+### Building from Source
 
 ```bash
 git clone https://github.com/sars-23/Arbor_0.5.git
 cd Arbor_0.5
-mvn clean install
-```
-
-#### Option 2: Download Release
-
-Visit the [Releases](https://github.com/sars-23/Arbor_0.5/releases) page to download the latest JAR file.
-
-### Quick Start
-
-```bash
-# Run a simple script
-java -jar Arbor.jar script.arb
-
-# Interactive REPL mode
-java -jar Arbor.jar
-```
-
-## 💻 Usage
-
-### Basic Syntax Example
-
-```arb
-// Variable declaration and assignment
-name = "Arbor"
-version = 0.5
-
-// Simple output
-print(name)
-
-// Control flow
-if (version > 0) {
-    print("Welcome to " + name + "!")
-}
-
-// Functions
-func greet(name) {
-    return "Hello, " + name
-}
-
-print(greet("World"))
-```
-
-### Running Scripts
-
-Create a file `hello.arb`:
-
-```arb
-func fibonacci(n) {
-    if (n <= 1) return n
-    return fibonacci(n - 1) + fibonacci(n - 2)
-}
-
-print(fibonacci(10))
-```
-
-Run it:
-
-```bash
-java -jar Arbor.jar hello.arb
-```
-
-## 🏗️ Architecture
-
-Arbor uses a **recursive descent parser** and an **interpreter pattern** for execution:
-
-1. **Lexer**: Tokenizes source code into tokens
-2. **Parser**: Builds an Abstract Syntax Tree (AST) from tokens
-3. **Interpreter**: Traverses and evaluates the AST dynamically
-4. **Runtime**: Manages variable scopes, function calls, and memory
-
-## 📁 Project Structure
-
-```
-Arbor_0.5/
-├── src/
-│   ├── main/
-│   │   └── java/
-│   │       └── arbor/
-│   │           ├── Lexer.java           # Tokenization
-│   │           ├── Parser.java          # AST construction
-│   │           ├── Interpreter.java     # Code execution
-│   │           ├── Runtime.java         # Runtime environment
-│   │           ├── Value.java           # Dynamic value representation
-│   │           └── Main.java            # Entry point
-│   └── test/
-│       └── java/
-│           └── arbor/
-│               └── InterpreterTest.java
-├── pom.xml                              # Maven configuration
-└── README.md
-```
-
-## 🛠️ Development
-
-### Building
-
-```bash
 mvn clean compile
 ```
 
-### Running Tests
+### Running Scripts via CLI
+
+To execute an `.ar` file directly:
 
 ```bash
-mvn test
+# Using compiled classes
+java -cp target/classes com.arbor.cli.Arbor fact.ar
+
+# Or with Maven exec
+mvn exec:java -Dexec.mainClass="com.arbor.cli.Arbor" -Dexec.args="fact.ar"
 ```
 
-### Creating a JAR
+Available example scripts in the root directory:
+- `fact.ar` — Recursive factorial calculation
+- `fib.ar` — Recursive Fibonacci calculation
+- `closure.ar` — Nested functions and lexical environment closures
+
+### Launching the Swing Mini-IDE
+
+Running `Arbor` without arguments launches the built-in desktop IDE:
 
 ```bash
-mvn clean package -DskipTests
+java -cp target/classes com.arbor.cli.Arbor
 ```
 
-### Development Tips
+- **Top Pane**: Read-only output terminal with standard stream redirection.
+- **Bottom Pane**: Multi-line code editor.
+- **Execution Shortcut**: Press `Shift + Enter` to execute the code in the editor.
 
-- Review `src/main/java/arbor/Parser.java` for grammar rules
-- Check `src/main/java/arbor/Interpreter.java` for runtime behavior
-- Add new built-in functions in `Runtime.java`
+---
 
-## 🤝 Contributing
+## Error Handling & Diagnostics
 
-Contributions are welcome! Please follow these steps:
+Arbor cleanly categorizes errors across three distinct phases of execution:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. **Lexical Errors (`LexicalError`)**: Triggered on unrecognized characters or unterminated string literals, reporting the exact line number.
+2. **Parse Errors (`ParseError`)**: Triggered when tokens violate grammar rules. The parser reports informative messages (e.g. `Expect ';' after variable declaration`) and executes panic-mode synchronization to recover at statement boundaries.
+3. **Runtime Errors (`RuntimeError`)**: Triggered when operations encounter incompatible operand types (e.g. attempting arithmetic on non-numeric operands) or referencing undeclared variables, preventing invalid state mutations.
 
-### Reporting Issues
+---
 
-Please use [GitHub Issues](https://github.com/sars-23/Arbor_0.5/issues) to report bugs or suggest improvements.
+## Author
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🗺️ Roadmap
-
-- [ ] Standard library expansion
-- [ ] Module/import system
-- [ ] Object-oriented programming support
-- [ ] Performance optimizations (JIT compilation)
-- [ ] REPL improvements
-- [ ] Comprehensive language documentation
-- [ ] IDE support (syntax highlighting, plugins)
-
-## 📚 Resources
-
-- [Getting Help](#contributing) - Open an issue
-- [Documentation](https://github.com/sars-23/Arbor_0.5/wiki) - Language guide (coming soon)
-
-## 👤 Author
-
-**sars-23**
-
-- GitHub: [@sars-23](https://github.com/sars-23)
+**Saransh Singh**  
+GitHub: [@sars-23](https://github.com/sars-23)
