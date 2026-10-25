@@ -274,7 +274,9 @@ Arbor cleanly categorizes errors across three distinct phases of execution:
 
 ---
 
-## Author
+## Author & Portfolio
 
 **Saransh Singh**  
-GitHub: [@sars-23](https://github.com/sars-23)
+- **GitHub:** [@sars-23](https://github.com/sars-23)  
+- **Portfolio:** [https://sars-23.github.io/saransh-singh-portfolio/](https://sars-23.github.io/saransh-singh-portfolio/)  
+- **Email:** [saransh.9822@gmail.com](mailto:saransh.9822@gmail.com)
